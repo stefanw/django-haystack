@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import translation
 from haystack.management.commands.clear_index import Command as ClearCommand
 from haystack.management.commands.update_index import Command as UpdateCommand
 
+translation.activate(settings.LANGUAGE_CODE)
 
 class Command(BaseCommand):
     help = "Completely rebuilds the search index by removing the old data and then updating."
