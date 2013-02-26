@@ -7,6 +7,8 @@ from django.core.exceptions import ImproperlyConfigured
 from django.core.management.base import AppCommand
 from django.db import reset_queries
 from django.utils.encoding import smart_str
+from django.utils import translation
+
 from haystack.query import SearchQuerySet
 try:
     from django.utils import importlib
@@ -151,6 +153,7 @@ class Command(AppCommand):
             help='Allows for the use multiple workers to parallelize indexing. Requires multiprocessing.'
         ),
     )
+
     option_list = AppCommand.option_list + base_options
     
     # Django 1.0.X compatibility.
@@ -167,8 +170,11 @@ class Command(AppCommand):
                 help='Verbosity level; 0=minimal output, 1=normal output, 2=all output'
             ),
         )
-    
+    leave_locale_alone = True
+
     def handle(self, *apps, **options):
+        translation.activate(settings.LANGUAGE_CODE)
+
         self.verbosity = int(options.get('verbosity', 1))
         self.batchsize = options.get('batchsize', DEFAULT_BATCH_SIZE)
         self.age = options.get('age', DEFAULT_AGE)
