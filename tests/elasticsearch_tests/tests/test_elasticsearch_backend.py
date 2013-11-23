@@ -4,8 +4,7 @@ from decimal import Decimal
 import logging as std_logging
 import operator
 
-import pyelasticsearch
-import requests
+import elasticsearch
 from django.conf import settings
 from django.test import TestCase
 from django.utils import unittest
@@ -33,11 +32,11 @@ except ImportError:
 
 def clear_elasticsearch_index():
     # Wipe it clean.
-    raw_es = pyelasticsearch.ElasticSearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
+    raw_es = elasticsearch.Elasticsearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
     try:
-        raw_es.delete_index(settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
-        raw_es.refresh()
-    except (requests.RequestException, pyelasticsearch.ElasticHttpError):
+        raw_es.indices.delete(index=settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
+        raw_es.indices.refresh()
+    except elasticsearch.TransportError:
         pass
 
 
@@ -204,7 +203,7 @@ class ElasticsearchSearchBackendTestCase(TestCase):
         super(ElasticsearchSearchBackendTestCase, self).setUp()
 
         # Wipe it clean.
-        self.raw_es = pyelasticsearch.ElasticSearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
+        self.raw_es = elasticsearch.Elasticsearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
         clear_elasticsearch_index()
 
         # Stow.
@@ -235,8 +234,8 @@ class ElasticsearchSearchBackendTestCase(TestCase):
 
     def raw_search(self, query):
         try:
-            return self.raw_es.search('*:*', index=settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
-        except (requests.RequestException, pyelasticsearch.ElasticHttpError):
+            return self.raw_es.search(q='*:*', index=settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
+        except elasticsearch.TransportError:
             return {}
 
     def test_non_silent(self):
@@ -262,6 +261,20 @@ class ElasticsearchSearchBackendTestCase(TestCase):
 
         try:
             bad_sb.search('foo')
+            self.fail()
+        except:
+            pass
+
+    def test_update_no_documents(self):
+        url = settings.HAYSTACK_CONNECTIONS['default']['URL']
+        index_name = settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME']
+
+        sb = connections['default'].backend('default', URL=url, INDEX_NAME=index_name, SILENTLY_FAIL=True)
+        self.assertEqual(sb.update(self.smmi, []), None)
+
+        sb = connections['default'].backend('default', URL=url, INDEX_NAME=index_name, SILENTLY_FAIL=False)
+        try:
+            sb.update(self.smmi, [])
             self.fail()
         except:
             pass
@@ -1212,7 +1225,7 @@ class ElasticsearchBoostBackendTestCase(TestCase):
         super(ElasticsearchBoostBackendTestCase, self).setUp()
 
         # Wipe it clean.
-        self.raw_es = pyelasticsearch.ElasticSearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
+        self.raw_es = elasticsearch.Elasticsearch(settings.HAYSTACK_CONNECTIONS['default']['URL'])
         clear_elasticsearch_index()
 
         # Stow.
@@ -1244,7 +1257,7 @@ class ElasticsearchBoostBackendTestCase(TestCase):
         super(ElasticsearchBoostBackendTestCase, self).tearDown()
 
     def raw_search(self, query):
-        return self.raw_es.search('*:*', index=settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
+        return self.raw_es.search(q='*:*', index=settings.HAYSTACK_CONNECTIONS['default']['INDEX_NAME'])
 
     def test_boost(self):
         self.sb.update(self.smmi, self.sample_objs)
@@ -1273,7 +1286,7 @@ class ElasticsearchBoostBackendTestCase(TestCase):
 
 class RecreateIndexTestCase(TestCase):
     def setUp(self):
-        self.raw_es = pyelasticsearch.ElasticSearch(
+        self.raw_es = elasticsearch.Elasticsearch(
             settings.HAYSTACK_CONNECTIONS['default']['URL'])
 
     def test_recreate_index(self):
@@ -1283,14 +1296,14 @@ class RecreateIndexTestCase(TestCase):
         sb.silently_fail = True
         sb.setup()
 
-        original_mapping = self.raw_es.get_mapping(sb.index_name)
+        original_mapping = self.raw_es.indices.get_mapping(index=sb.index_name)
 
         sb.clear()
         sb.setup()
 
         try:
-            updated_mapping = self.raw_es.get_mapping(sb.index_name)
-        except pyelasticsearch.ElasticHttpNotFoundError:
+            updated_mapping = self.raw_es.indices.get_mapping(sb.index_name)
+        except elasticsearch.NotFoundError:
             self.fail("There is no mapping after recreating the index")
         self.assertEqual(original_mapping, updated_mapping,
             "Mapping after recreating the index differs from the original one")
